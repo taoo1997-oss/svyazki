@@ -73,6 +73,7 @@ input[type=search]{width:100%;padding:9px 11px;border:1px solid var(--line);bord
 .num{font-family:var(--mono);font-size:12px;color:var(--muted)}
 .fitem[aria-pressed="true"] .num{color:inherit}
 .fitem .en{display:block;font-size:12px;color:var(--muted)}
+.fmore{margin-top:4px;justify-self:start}
 .fitem[aria-pressed="true"] .en{color:inherit;opacity:.85}
 .main{display:grid;gap:14px;min-width:0}
 .rootcard{display:grid;gap:10px}
@@ -99,6 +100,12 @@ input[type=search]{width:100%;padding:9px 11px;border:1px solid var(--line);bord
 .tree{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .tree>li{position:relative;scroll-margin-top:72px}
 .tree>li::before{content:"";position:absolute;left:-14px;top:24px;width:12px;border-top:3px solid var(--lc)}
+/* once a figure is picked on a level, that level shrinks to it, so the variation reads as one line; "все N" brings the rest back */
+.branch.picked:not(.all)>.tree>li:not(.open){display:none}
+.showall{display:none;margin-left:auto}
+.branch.picked>.bhead>.showall{display:inline-block}
+.showall .b,.branch.all>.bhead>.showall .a{display:none}
+.branch.all>.bhead>.showall .b{display:inline}
 .tree.has-open>li:not(.open)>.node{opacity:.55}
 .tree.has-open>li:not(.open)>.node:hover{opacity:1}
 .node{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--c);border-radius:8px;padding:6px 8px 6px 6px}
@@ -285,11 +292,21 @@ function renderClasses(){
 function renderList(){
   const q=S.q.trim().toLowerCase();
   const figs=G[S.dance].figs.filter(f=>RANK[f.cls]<=RANK[S.cls]).filter(f=>!q||(f.ru+' '+f.en).toLowerCase().includes(q));
+  // with a figure chosen the list shrinks to it (unless searching or asked for all), so the variation gets the room
+  const brief=S.root&&!q&&!S.listAll&&figs.some(f=>f.id===S.root);
   let html='', last=null;
-  figs.forEach(f=>{ if(f.cls!==last){html+=`<div class="fgroup">Класс ${f.cls}</div>`; last=f.cls}
+  (brief?figs.filter(f=>f.id===S.root):figs).forEach(f=>{ if(!brief&&f.cls!==last){html+=`<div class="fgroup">Класс ${f.cls}</div>`; last=f.cls}
     html+=`<button class="fitem" aria-pressed="${S.root===f.id}" data-id="${f.id}"><span class="num">${numOf(f.id)}</span><span>${esc(f.ru)}<span class="en">${esc(f.en)}</span></span></button>`;});
+  if(brief) html+=`<button class="btn ghost sm fmore" id="fmore">Сменить фигуру · все ${figs.length} ▾</button>`;
   $('flist').innerHTML=html||'<p class="empty">Ничего не найдено.</p>';
-  $('flist').querySelectorAll('.fitem').forEach(b=>b.onclick=()=>{S.root=b.dataset.id; S.path=[]; renderList(); renderMain(); if(window.innerWidth<860) $('main').scrollIntoView({behavior:'smooth'})});
+  $('flist').querySelectorAll('.fitem').forEach(b=>b.onclick=()=>{
+    if(brief) return showAllFigs();
+    S.root=b.dataset.id; S.path=[]; S.listAll=false; S.q=''; $('q').value=''; renderList(); renderMain(); if(window.innerWidth<860) $('main').scrollIntoView({behavior:'smooth'})});
+  if(brief) $('fmore').onclick=showAllFigs;
+}
+function showAllFigs(){
+  S.listAll=true; renderList();
+  const cur=$('flist').querySelector('.fitem[aria-pressed="true"]'); if(cur) cur.scrollIntoView({block:'nearest'});
 }
 // --- connection logic ---
 function edgeInfo(e){
@@ -323,7 +340,8 @@ function nodeHTML(c,path,step){
 }
 function listHTML(id,path,step){
   const ch=children(id), word=S.dir==='next'?'после':'перед';
-  const head=`<div class="bhead"><span class="step-n">Шаг ${step}</span><span>${word} <b>${esc(FIG[id].ru)}</b> · ${ch.length?plural(ch.length):'нет фигур'}</span></div>`;
+  const head=`<div class="bhead"><span class="step-n">Шаг ${step}</span><span>${word} <b>${esc(FIG[id].ru)}</b> · ${ch.length?plural(ch.length):'нет фигур'}</span>`+
+    (ch.length>1?`<button class="btn ghost sm showall" data-act="all"><span class="a">показать все ${ch.length} ▾</span><span class="b">скрыть остальные ▴</span></button>`:'')+`</div>`;
   const body=ch.length?`<ul class="tree">${ch.map(c=>nodeHTML(c,path,step)).join('')}</ul>`:`<p class="empty">По выбранным учебникам ${S.dir==='next'?'последующих':'предшествующих'} фигур нет.</p>`;
   return `<div class="branch s${lvl(step)}${step===2?' top':''}${step>=6?' deep':''}">${head}${body}</div>`;
 }
@@ -333,11 +351,13 @@ function openLi(li){
   ul.querySelectorAll(':scope > li.open').forEach(o=>{if(o!==li) closeLi(o)});
   li.insertAdjacentHTML('beforeend',listHTML(li.dataset.id,li.dataset.k,+li.dataset.step+1));
   li.classList.add('open'); ul.classList.add('has-open');
+  ul.parentElement.classList.add('picked'); ul.parentElement.classList.remove('all');
   li.querySelectorAll(':scope > .node [data-act="tog"]').forEach(b=>b.setAttribute('aria-expanded','true'));
 }
 function closeLi(li){
   const br=li.querySelector(':scope > .branch'); if(br) br.remove();
   li.classList.remove('open'); li.parentElement.classList.remove('has-open');
+  li.parentElement.parentElement.classList.remove('picked','all');
   li.querySelectorAll(':scope > .node [data-act="tog"]').forEach(b=>b.setAttribute('aria-expanded','false'));
 }
 function openChain(){
@@ -424,6 +444,7 @@ function renderMain(){
 // tree interaction (delegated)
 document.addEventListener('click',ev=>{
   const b=ev.target.closest('[data-act]'); if(!b||!$('treeWrap')||!$('treeWrap').contains(b)) return;
+  if(b.dataset.act==='all'){ b.closest('.branch').classList.toggle('all'); return; }
   const li=b.closest('li'); const id=li.dataset.id;
   if(b.dataset.act==='tech') return openTech(id);
   if(b.dataset.act==='tog'){
