@@ -102,6 +102,8 @@ input[type=search]{width:100%;padding:9px 11px;border:1px solid var(--line);bord
 .tree>li::before{content:"";position:absolute;left:-14px;top:24px;width:12px;border-top:3px solid var(--lc)}
 /* once a figure is picked on a level, that level shrinks to it, so the variation reads as one line; "все N" brings the rest back */
 .branch.picked:not(.all)>.tree>li:not(.open){display:none}
+.root1{display:flex;align-items:center;gap:10px;--c:var(--ink);border-color:var(--ink);box-shadow:0 0 0 1px var(--ink);margin-bottom:8px;scroll-margin-top:72px}
+.root1 .nm{cursor:default}
 .showall{display:none;margin-left:auto}
 .branch.picked>.bhead>.showall{display:inline-block}
 .showall .b,.branch.all>.bhead>.showall .a{display:none}
@@ -360,6 +362,15 @@ function closeLi(li){
   li.parentElement.parentElement.classList.remove('picked','all');
   li.querySelectorAll(':scope > .node [data-act="tog"]').forEach(b=>b.setAttribute('aria-expanded','false'));
 }
+// after a pick keep the variation on screen: from step 1 down to the start of the new step;
+// when it no longer fits, the new step sits at the bottom and as much of the chain as fits stays above
+function showChain(li){
+  const pb=$('pathbar').offsetHeight+8, Y=el=>el.getBoundingClientRect().top+scrollY;
+  const head=li.querySelector(':scope > .branch > .bhead')||li;
+  const from=Y($('root1'))-pb, to=Y(head)+head.offsetHeight+60;
+  const y=to-from<=innerHeight?from:to-innerHeight;
+  if(from<scrollY||to>scrollY+innerHeight) scrollTo({top:Math.max(0,y),behavior:'smooth'});
+}
 function openChain(){
   const lis=[]; let ul=$('treeWrap').querySelector('.branch.top > .tree');
   while(ul){const li=ul.querySelector(':scope > li.open'); if(!li) break; lis.push(li); ul=li.querySelector(':scope > .branch > .tree');}
@@ -423,7 +434,9 @@ function renderMain(){
     <div class="stats">${S.dir==='next'?'Следующих':'Предшествующих'} фигур: <b class="v-g">${n.g}</b> без изменений · <b class="v-o">${n.o}</b> с изменениями · <b style="color:var(--bad)">${n.r}</b> старшего класса</div>
     ${notes.length?`<details><summary class="hint" style="cursor:pointer">Общие указания учебников для этой фигуры (${notes.length})</summary><div class="notes" style="margin-top:6px">${notes.map(x=>`<div class="n">${esc(x.t)} <em>${SRCN[x.src]||x.src}, стр. PDF ${esc(x.p)}</em></div>`).join('')}</div></details>`:''}
   </div>
-  <div class="panel" id="treeWrap"><div class="pathbar" id="pathbar"></div>${listHTML(S.root,S.root,2)}</div>`;
+  <div class="panel" id="treeWrap"><div class="pathbar" id="pathbar"></div>
+    <div class="node root1" id="root1"><span class="step-n" style="--lc:var(--ink)">Шаг 1</span><div class="nm"><b>${esc(f.ru)}</b><span class="sub">${esc(f.en)}</span></div></div>
+    ${listHTML(S.root,S.root,2)}</div>`;
   // keep the opened variation across filter changes, as far as it still exists
   let ul=$('treeWrap').querySelector('.branch.top > .tree');
   for(const id of S.path){
@@ -449,7 +462,7 @@ document.addEventListener('click',ev=>{
   if(b.dataset.act==='tech') return openTech(id);
   if(b.dataset.act==='tog'){
     if(li.classList.contains('open')) closeLi(li);
-    else{ openLi(li); li.scrollIntoView({behavior:'smooth',block:window.innerWidth<860?'start':'nearest'}); }
+    else{ openLi(li); showChain(li); }
     renderPath(); return;
   }
   if(b.dataset.act==='det'){
